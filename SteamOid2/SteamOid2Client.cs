@@ -5,25 +5,18 @@ using System.Collections.Specialized;
 using System.Globalization;
 using System.Text;
 using System.Web;
-#if NETFRAMEWORK
-using System.Net.Http;
-#else
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-#endif
 
 namespace SteamOid2;
 
 /// <inheritdoc cref="ISteamOid2Client"/>
-public class SteamOid2Client : ISteamOid2Client
+public sealed class SteamOid2Client : ISteamOid2Client
 {
     private const string Spec = "http://specs.openid.net/auth/2.0";
     private const string IdentitySpec = "http://specs.openid.net/auth/2.0/identifier_select";
-
-#if !NETFRAMEWORK
     private readonly ILogger<SteamOid2Client>? _logger;
     private readonly IConfiguration? _config;
-#endif
     private readonly string? _realm;
     private readonly string? _callback;
     private SteamOid2Resource? _discoveredResource;
@@ -31,10 +24,7 @@ public class SteamOid2Client : ISteamOid2Client
     /// <summary>
     /// Creates a <see cref="ISteamOid2Client"/> that requires you to pass the realm and callback when you call <see cref="GetLoginUri(string, string, CancellationToken)"/> instead of at construction time.
     /// </summary>
-    public SteamOid2Client()
-    {
-
-    }
+    public SteamOid2Client() { }
 
     /// <summary>
     /// Non dependency-injection constructor to create a client from a <paramref name="realm"/> and <paramref name="callback"/>.
@@ -51,16 +41,12 @@ public class SteamOid2Client : ISteamOid2Client
             throw new ArgumentException("Callback must be part of the same domain as realm.", nameof(_callback));
     }
 
-#if !NETFRAMEWORK
     /// <summary>
     /// Creates a <see cref="ISteamOid2Client"/> that requires you to pass the realm and callback when you call <see cref="GetLoginUri(string, string, CancellationToken)"/> instead of at construction time.
     /// </summary>
     /// <param name="logger">Optional logger for logging errors.</param>
     /// <remarks>This constructor is not available in .NET Framework.</remarks>
-    public SteamOid2Client(ILogger<SteamOid2Client>? logger)
-    {
-        _logger = logger;
-    }
+    public SteamOid2Client(ILogger<SteamOid2Client>? logger) => _logger = logger;
 
     /// <summary>
     /// Dependency-injection constructor to create a client from a <paramref name="configuration"/> with a section 'OID2' with properties '<see cref="Realm"/>' and '<see cref="CallbackUri"/>'.
@@ -85,46 +71,17 @@ public class SteamOid2Client : ISteamOid2Client
     /// <param name="logger">Optional logger for logging errors.</param>
     /// <exception cref="ArgumentNullException"><paramref name="realm"/> or <paramref name="callback"/> was <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">Callback must be part of the same domain as realm.</exception>
-    public SteamOid2Client(string realm, string callback, ILogger<SteamOid2Client>? logger) : this(realm, callback)
-    {
-        _logger = logger;
-    }
+    public SteamOid2Client(string realm, string callback, ILogger<SteamOid2Client>? logger) : this(realm, callback) => _logger = logger;
 
     /// <inheritdoc/>
-    public string Realm => _config == null
-        ? _realm ?? throw new InvalidOperationException("Realm was not passed in constructor.")
-        : _config.GetSection("OID2")["Realm"] ?? "http://127.0.0.1:80/";
+    public string Realm => _config == null ? _realm ?? throw new InvalidOperationException("Realm was not passed in constructor.") : _config.GetSection("OID2")["Realm"] ?? "http://127.0.0.1:80/";
 
     /// <inheritdoc/>
-    public string CallbackUri => _config == null
-        ? _callback ?? throw new InvalidOperationException("Callback was not passed in constructor.")
-        : _config.GetSection("OID2")["CallbackUri"] ?? "http://127.0.0.1:80/login/";
-#else
-    /// <inheritdoc/>
-    public string Realm => _realm ?? throw new InvalidOperationException("Realm was not passed in constructor.");
-
-    /// <inheritdoc/>
-    public string CallbackUri => _callback ?? throw new InvalidOperationException("Callback was not passed in constructor.");
-#endif
+    public string CallbackUri => _config == null ? _callback ?? throw new InvalidOperationException("Callback was not passed in constructor.") : _config.GetSection("OID2")["CallbackUri"] ?? "http://127.0.0.1:80/login/";
 
     /// <inheritdoc/>
     public string ContentType => "x-www-urlencoded";
 
-#if NETFRAMEWORK
-    /// <inheritdoc/>
-    public virtual ValueTask<SteamOid2Resource> GetSteamOid2Resource(bool forceRefresh = false, CancellationToken token = default)
-    {
-        if (_discoveredResource != null && !forceRefresh)
-            return new ValueTask<SteamOid2Resource>(_discoveredResource);
-
-        return new ValueTask<SteamOid2Resource>(DiscoverIntl(this, token));
-
-        static async Task<SteamOid2Resource> DiscoverIntl(SteamOid2Client client, CancellationToken token)
-        {
-            return await client.Discover(token).ConfigureAwait(false) ? client._discoveredResource! : Constants.BackupSteamOid2Resource;
-        }
-    }
-#else
     /// <inheritdoc/>
     public async ValueTask<SteamOid2Resource> GetSteamOid2Resource(bool forceRefresh = false, CancellationToken token = default)
     {
@@ -135,99 +92,65 @@ public class SteamOid2Client : ISteamOid2Client
 
         return _discoveredResource;
     }
-#endif
 
     /// <summary>
     /// Overridable method that uses an <see cref="HttpClient"/> to download the Steam OpenID 2.0 resources.
     /// </summary>
-    protected virtual async Task<bool> Discover(CancellationToken token = default)
+    private async Task<bool> Discover(CancellationToken token = default)
     {
-        // download the XRI resource from Steam to discover the OpenID Provider Endpoint URI
-        HttpRequestMessage message = new HttpRequestMessage(HttpMethod.Get, Constants.SteamXRIProvider);
-
-        using HttpClient httpClient = new HttpClient();
-
-        HttpResponseMessage response = await httpClient.SendAsync(message, token).ConfigureAwait(false);
-
-        SteamOid2ResourceReader reader = new SteamOid2ResourceReader();
-        SteamOid2Resource? content = await reader.Read(
-#if NET5_0_OR_GREATER
-            await response.Content.ReadAsStreamAsync(token)
-#else
-            await response.Content.ReadAsStreamAsync()
-#endif
-            , token);
+        // Download the XRI resource from Steam to discover the OpenID Provider Endpoint URI
+        var message = new HttpRequestMessage(HttpMethod.Get, Constants.SteamXRIProvider);
+        using var httpClient = new HttpClient();
+        var response = await httpClient.SendAsync(message, token).ConfigureAwait(false);
+        var reader = new SteamOid2ResourceReader();
+        var content = await reader.Read(await response.Content.ReadAsStreamAsync(token), token);
 
         if (content == null)
         {
-#if !NETFRAMEWORK
             _logger?.LogError($"Unable to get Steam OpenID 2.0 XRDS document from \"{Constants.SteamXRIProvider}\".");
-#else
-            Console.Error.WriteLine($"Unable to get Steam OpenID 2.0 XRDS document from \"{Constants.SteamXRIProvider}\".");
-#endif
             return false;
         }
-        
+
         _discoveredResource = content;
         return true;
     }
-#if NETFRAMEWORK
-    private static readonly char[] SplitChars = [ '\n' ];
-#endif
 
     /// <inheritdoc/>
-    public virtual Oid2AuthenticationStatus CheckAuthorizationResponse(string keyValuePairContent, out string? invalidateHandle)
+    public Oid2AuthenticationStatus CheckAuthorizationResponse(string keyValuePairContent, out string? invalidateHandle)
     {
         // read key/value pair list with colon separator
-
-#if NET8_0_OR_GREATER
         ReadOnlySpan<char> span = keyValuePairContent;
-        int lineCount = span.Count('\n');
-        Span<Range> lines = lineCount > 32 ? new Range[lineCount] : stackalloc Range[lineCount];
+        var lineCount = span.Count('\n');
+        var lines = lineCount > 32 ? new Range[lineCount] : stackalloc Range[lineCount];
         lineCount = span.Split(lines, '\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-#else
-#if NETFRAMEWORK
-        string[] lines = keyValuePairContent.Split(SplitChars, StringSplitOptions.RemoveEmptyEntries);
-#else
-        string[] lines = keyValuePairContent.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-#endif
-        int lineCount = lines.Length;
-#endif
+
         invalidateHandle = null;
         ReadOnlySpan<char> isValid = default;
-        for (int i = 0; i < lineCount; ++i)
+        for (var i = 0; i < lineCount; ++i)
         {
-#if NET8_0_OR_GREATER
-            ReadOnlySpan<char> line = span[lines[i]];
-#else
-            ReadOnlySpan<char> line = lines[i].AsSpan();
-#endif
+            var line = span[lines[i]];
+
             if (line.Length == 0)
                 continue;
             if (line[0] == '\r')
-                line = line.Slice(1);
-            if (line[line.Length - 1] == '\r')
-                line = line.Slice(0, line.Length - 1);
+                line = line[1..];
+            if (line[^1] == '\r')
+                line = line[..^1];
 
-            int space = line.IndexOf(':');
-            
+            var space = line.IndexOf(':');
+
             if (space == -1 || line.Length < space + 2)
                 continue;
 
-            if (line.Slice(0, space).Equals("invalidate_handle".AsSpan(), StringComparison.Ordinal))
+            if (line[..space].Equals("invalidate_handle".AsSpan(), StringComparison.Ordinal))
             {
-                ReadOnlySpan<char> invHandle = line.Slice(space + (line[space + 1] == ' ' ? 2 : 1));
-#if NETFRAMEWORK
-                invalidateHandle = invHandle.ToString();
-#else
+                var invHandle = line[(space + (line[space + 1] == ' ' ? 2 : 1))..];
                 invalidateHandle = new string(invHandle);
-#endif
-                if (isValid.Length > 0)
-                    break;
+                if (isValid.Length > 0) break;
             }
-            else if (line.Slice(0, space).Equals("is_valid".AsSpan(), StringComparison.Ordinal))
+            else if (line[..space].Equals("is_valid".AsSpan(), StringComparison.Ordinal))
             {
-                isValid = line.Slice(space + (line[space + 1] == ' ' ? 2 : 1));
+                isValid = line[(space + (line[space + 1] == ' ' ? 2 : 1))..];
                 if (invalidateHandle is not null)
                     break;
             }
@@ -239,12 +162,12 @@ public class SteamOid2Client : ISteamOid2Client
             return isValid.Length == 0 || !isValid.Equals("false".AsSpan(), StringComparison.OrdinalIgnoreCase)
                 ? Oid2AuthenticationStatus.InvalidResponse
 
-                // reject instead if theres an invalidate handle
+                // reject instead if there's an invalidate handle
                 : (string.IsNullOrEmpty(invalidateHandle)
                     ? Oid2AuthenticationStatus.Invalid
                     : Oid2AuthenticationStatus.Reject);
         }
-        
+
         // check for isValid:true or false
         return !string.IsNullOrEmpty(invalidateHandle) ? Oid2AuthenticationStatus.Reject : Oid2AuthenticationStatus.Valid;
     }
@@ -253,34 +176,32 @@ public class SteamOid2Client : ISteamOid2Client
     public SteamOid2Response ParseIdReponse(Uri uri) => ParseIdReponse(CallbackUri.AsSpan(), uri);
 
     /// <inheritdoc/>
-    public virtual SteamOid2Response ParseIdReponse(ReadOnlySpan<char> expectedCallbackUri, Uri uri)
+    public SteamOid2Response ParseIdReponse(ReadOnlySpan<char> expectedCallbackUri, Uri uri)
     {
         // converts the ?www=xxx&yyy=zzz section of the URI to a dictionary.
-        NameValueCollection queryParameters = HttpUtility.ParseQueryString(uri.Query);
+        var queryParameters = HttpUtility.ParseQueryString(uri.Query);
 
         // invalidate handle is passed when a handle needs to be rejected.
-        string? assocHandle = queryParameters["openid.assoc_handle"] ?? queryParameters["openid.invalidate_handle"];
+        var assocHandle = queryParameters["openid.assoc_handle"] ?? queryParameters["openid.invalidate_handle"];
 
-        string? mode = queryParameters["openid.mode"];
+        var mode = queryParameters["openid.mode"];
         if (!string.Equals(mode, "id_res", StringComparison.Ordinal))
         {
             if (string.Equals(mode, "cancel", StringComparison.Ordinal))
                 return SteamOid2Response.Cancelled;
-            if (string.Equals(mode, "error", StringComparison.Ordinal))
-                return new SteamOid2Response(Oid2Status.Error, 0ul, queryParameters["openid.error"] ?? "Unknown error", assocHandle);
-
-            return new SteamOid2Response(Oid2Status.InvalidResponse, 0ul, $"Invalid mode: {mode}", assocHandle);
+            return string.Equals(mode, "error", StringComparison.Ordinal) ? new SteamOid2Response(Oid2Status.Error, 0ul, queryParameters["openid.error"] ?? "Unknown error", assocHandle)
+                : new SteamOid2Response(Oid2Status.InvalidResponse, 0ul, $"Invalid mode: {mode}", assocHandle);
         }
 
         if (!expectedCallbackUri.Equals(queryParameters["openid.return_to"].AsSpan(), StringComparison.Ordinal))
             return new SteamOid2Response(Oid2Status.InvalidResponse, 0ul, $"Mismatched return_to: {mode}", assocHandle);
-        
+
         if (string.IsNullOrEmpty(queryParameters["openid.response_nonce"]))
             return new SteamOid2Response(Oid2Status.InvalidResponse, 0ul, "Missing nonce", assocHandle);
-        
+
         if (string.IsNullOrEmpty(queryParameters["openid.signed"]))
             return new SteamOid2Response(Oid2Status.InvalidResponse, 0ul, "Missing signed", assocHandle);
-        
+
         if (string.IsNullOrEmpty(queryParameters["openid.sig"]))
             return new SteamOid2Response(Oid2Status.InvalidResponse, 0ul, "Missing sig", assocHandle);
 
@@ -289,15 +210,15 @@ public class SteamOid2Client : ISteamOid2Client
 
         // claimed_id format: https://steamcommunity.com/openid/id/76500000000000000
 
-        string? steamId = queryParameters["openid.claimed_id"];
+        var steamId = queryParameters["openid.claimed_id"];
         if (steamId == null)
             return new SteamOid2Response(Oid2Status.InvalidResponse, 0ul, "Missing claimed_id", assocHandle);
         if (!steamId.StartsWith(Constants.SteamClaimedIdPrefix, StringComparison.Ordinal))
             return new SteamOid2Response(Oid2Status.InvalidResponse, 0ul, $"Invalid claimed_id: {steamId}", assocHandle);
 
-        steamId = steamId.Substring(Constants.SteamClaimedIdPrefix.Length);
+        steamId = steamId[Constants.SteamClaimedIdPrefix.Length..];
 
-        if (!ulong.TryParse(steamId, NumberStyles.Number, CultureInfo.InvariantCulture, out ulong s64) || !SteamUtility.IsIndividualSteam64(s64))
+        if (!ulong.TryParse(steamId, NumberStyles.Number, CultureInfo.InvariantCulture, out var s64) || !SteamUtility.IsIndividualSteam64(s64))
             return new SteamOid2Response(Oid2Status.InvalidResponse, 0ul, $"Invalid Individual Steam64 ID: {steamId}", assocHandle);
 
         return new SteamOid2Response(Oid2Status.Success, s64, null, assocHandle);
@@ -312,19 +233,19 @@ public class SteamOid2Client : ISteamOid2Client
 
     private static string MakeUrl(ReadOnlySpan<char> realmUri, ReadOnlySpan<char> callbackUri, ReadOnlySpan<char> opEndpointUrl)
     {
-        ReadOnlySpan<char> oidStrNs = OidStrNs.AsSpan();
-        ReadOnlySpan<char> oidClaimedId = OidClaimedId.AsSpan();
-        ReadOnlySpan<char> oidIdentity = OidIdentity.AsSpan();
-        ReadOnlySpan<char> oidMode = OidMode.AsSpan();
-        ReadOnlySpan<char> oidRealm = OidRealm.AsSpan();
-        ReadOnlySpan<char> oidCallback = OidCallback.AsSpan();
-        ReadOnlySpan<char> spec = Spec.AsSpan();
-        ReadOnlySpan<char> identitySpec = IdentitySpec.AsSpan();
+        var oidStrNs = OidStrNs.AsSpan();
+        var oidClaimedId = OidClaimedId.AsSpan();
+        var oidIdentity = OidIdentity.AsSpan();
+        var oidMode = OidMode.AsSpan();
+        var oidRealm = OidRealm.AsSpan();
+        var oidCallback = OidCallback.AsSpan();
+        var spec = Spec.AsSpan();
+        var identitySpec = IdentitySpec.AsSpan();
 
-        int len = oidStrNs.Length + oidClaimedId.Length + oidIdentity.Length + oidMode.Length + oidRealm.Length + oidCallback.Length
+        var len = oidStrNs.Length + oidClaimedId.Length + oidIdentity.Length + oidMode.Length + oidRealm.Length + oidCallback.Length
                   + spec.Length + identitySpec.Length * 2 + realmUri.Length + callbackUri.Length + opEndpointUrl.Length;
         Span<char> newText = stackalloc char[len];
-        int index = 0;
+        var index = 0;
         opEndpointUrl.CopyTo(newText.Slice(index, opEndpointUrl.Length));
         index += opEndpointUrl.Length;
         oidStrNs.CopyTo(newText.Slice(index, oidStrNs.Length));
@@ -347,82 +268,38 @@ public class SteamOid2Client : ISteamOid2Client
         index += realmUri.Length;
         oidCallback.CopyTo(newText.Slice(index, oidCallback.Length));
         index += oidCallback.Length;
-        callbackUri.CopyTo(newText.Slice(index));
+        callbackUri.CopyTo(newText[index..]);
 
-#if NETFRAMEWORK
-        return newText.ToString();
-#else
         return new string(newText);
-#endif
     }
 
     /// <inheritdoc/>
     public ValueTask<Uri> GetLoginUri(CancellationToken token = default) => GetLoginUri(Realm, CallbackUri, token);
 
-#if NETFRAMEWORK
+
     /// <inheritdoc/>
-    public virtual ValueTask<Uri> GetLoginUri(string realmUri, string callbackUri, CancellationToken token = default)
+    public async ValueTask<Uri> GetLoginUri(string realmUri, string callbackUri, CancellationToken token = default)
     {
         if (!callbackUri.StartsWith(realmUri, StringComparison.Ordinal))
             throw new ArgumentException("Callback must be part of the same domain as realm.", nameof(_callback));
-        ValueTask<SteamOid2Resource> resx = GetSteamOid2Resource(false, token);
-        if (!resx.IsCompleted)
-            return new ValueTask<Uri>(GetLoginUriIntl(realmUri, callbackUri, resx));
-
-        string url = MakeUrl(realmUri.AsSpan(), callbackUri.AsSpan(), resx.Result.OPEndpointURL.AsSpan());
-        return new ValueTask<Uri>(new Uri(url));
-
-        static async Task<Uri> GetLoginUriIntl(string realmUri, string callbackUri, ValueTask< SteamOid2Resource> resx)
-        {
-            SteamOid2Resource resource = await resx.ConfigureAwait(false);
-            string url = MakeUrl(realmUri.AsSpan(), callbackUri.AsSpan(), resource.OPEndpointURL.AsSpan());
-            return new Uri(url);
-        }
-    }
-#else
-    /// <inheritdoc/>
-    public virtual async ValueTask<Uri> GetLoginUri(string realmUri, string callbackUri, CancellationToken token = default)
-    {
-        if (!callbackUri.StartsWith(realmUri, StringComparison.Ordinal))
-            throw new ArgumentException("Callback must be part of the same domain as realm.", nameof(_callback));
-        SteamOid2Resource resource = await GetSteamOid2Resource(false, token).ConfigureAwait(false);
-
-        string url = MakeUrl(realmUri.AsSpan(), callbackUri.AsSpan(), resource.OPEndpointURL.AsSpan());
+        var resource = await GetSteamOid2Resource(false, token).ConfigureAwait(false);
+        var url = MakeUrl(realmUri.AsSpan(), callbackUri.AsSpan(), resource.OpEndpointUrl.AsSpan());
         return new Uri(url);
     }
-#endif
 
-#if NETFRAMEWORK
     /// <inheritdoc/>
-    public virtual ValueTask<Uri> GetAuthorizeUri(Uri idResponseUri, CancellationToken token = default)
+    public async ValueTask<Uri> GetAuthorizeUri(Uri idResponseUri, CancellationToken token = default)
     {
-        ValueTask<SteamOid2Resource> resx = GetSteamOid2Resource(false, token);
-        if (!resx.IsCompleted)
-            return new ValueTask<Uri>(GetAuthorizeUriIntl(idResponseUri, resx));
-
-        return new ValueTask<Uri>(GetAuthorizedUriIntl(idResponseUri, resx.Result));
-
-        static async Task<Uri> GetAuthorizeUriIntl(Uri idResponseUri, ValueTask< SteamOid2Resource> resx)
-        {
-            SteamOid2Resource resource = await resx.ConfigureAwait(false);
-            return GetAuthorizedUriIntl(idResponseUri, resource);
-        }
-    }
-#else
-    /// <inheritdoc/>
-    public virtual async ValueTask<Uri> GetAuthorizeUri(Uri idResponseUri, CancellationToken token = default)
-    {
-        SteamOid2Resource resource = await GetSteamOid2Resource(false, token).ConfigureAwait(false);
+        var resource = await GetSteamOid2Resource(false, token).ConfigureAwait(false);
         return GetAuthorizedUriIntl(idResponseUri, resource);
     }
-#endif
+
     private static Uri GetAuthorizedUriIntl(Uri idResponseUri, SteamOid2Resource resource)
     {
-        NameValueCollection queryParameters = HttpUtility.ParseQueryString(idResponseUri.Query);
-
-        StringBuilder uriBuilder = new StringBuilder(idResponseUri.Query.Length + 63);
-        uriBuilder.Append(resource.OPEndpointURL);
-        bool first = true;
+        var queryParameters = HttpUtility.ParseQueryString(idResponseUri.Query);
+        var uriBuilder = new StringBuilder(idResponseUri.Query.Length + 63);
+        uriBuilder.Append(resource.OpEndpointUrl);
+        var first = true;
         foreach (string key in queryParameters)
         {
             if (first)

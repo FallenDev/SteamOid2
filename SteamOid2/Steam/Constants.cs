@@ -16,5 +16,5 @@ public static class Constants
     /// Prefix of the URL returned from Steam's OpenID authentication used to retreive the Steam64 ID.
     /// </summary>
     public const string SteamClaimedIdPrefix = "https://steamcommunity.com/openid/id/";
-    internal static readonly SteamOid2Resource BackupSteamOid2Resource = new SteamOid2Resource("http://specs.openid.net/auth/2.0/server", "https://steamcommunity.com/openid/login");
+    internal static readonly SteamOid2Resource BackupSteamOid2Resource = new("http://specs.openid.net/auth/2.0/server", "https://steamcommunity.com/openid/login");
 }

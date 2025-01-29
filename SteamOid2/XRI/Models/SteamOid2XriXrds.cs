@@ -6,7 +6,7 @@ internal class SteamOid2Xri
 {
     public SteamOid2XriXrds? XRDS { get; set; }
 }
-internal class SteamOid2XriXrds
+internal abstract class SteamOid2XriXrds
 {
     [XmlArray("Service")]
     public SteamOid2XriService[]? XRD { get; set; }
