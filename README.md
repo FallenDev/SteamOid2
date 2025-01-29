@@ -30,19 +30,7 @@ If you're seeing `Error` when you try to log in from Steam, make sure the realm 
 
 ## Generating a Strong Name Key/Pair
 
-SteamOid2.dll has a strong name, which means you may want to generate your own to recompile it.
-
-Create a .snk file. This file or its contents should not be shared.
-
-```
-Developer Powershell > cd "Location outside of repository"
-Developer Powershell > sn -k SteamOid2.dll.snk
-Developer Powershell > sn -p SteamOid2.dll.snk SteamOid2.dll.publickey
-```
-
-Copy the public key to your fork and replace the existing one if you want.
-
-Set the `StrongNameKeyPath` property in the .csproj file to the path of the .snk file.
+For .NET 5+ assemblies, there is no benefit to strong-named assemblies. The runtime does not validate the signature, nor does it use the strong-name for assembly blinding.
 
 ## Sample implementation with a console application and HttpListener
 https://github.com/UncreatedStaff/SteamOid2/blob/master/SteamOid2.Sample/LoginHost.cs
