@@ -3,11 +3,9 @@
 <PackageReference Include="SteamOid2" Version="*" />
 ```
 
-Library for integrating with Steam's Open-ID provider in .NET or .NET Framework, as described here: https://partner.steamgames.com/doc/features/auth#website.
+Library for integrating with Steam's Open-ID provider in .NET, as described here: https://partner.steamgames.com/doc/features/auth#website.
 
-Available for .NET Framework 4.6.1+, .NET Standard 2.1+, and .NET 5.0+.
-
-The .NET Framework target doesn't have any Microsoft.Extensions support.
+Available for .NET 9.0
 
 ## Usage
 ```cs
